@@ -9,7 +9,7 @@ class RoadSystem:
     def __init__(self, asphalt: pygame.Surface, roadside: pygame.Surface, width: float, center_x: float) -> None:
         self.asphalt = None
         self.roadside = None
-
+        self.width = width
         self.scale = self.__calculate_scale(asphalt, roadside, width)
         self.road = self.__generate_road(asphalt, roadside, width)
         self.road_rect1 = self.road.get_rect(center=(center_x, 0))
@@ -124,18 +124,22 @@ class RoadSystem:
         return surf
 
 
-    def calculate_x(self) -> list:
+    def calculate_x(self, width) -> list:
         asphalt = self.asphalt.get_width()
         roadside = self.roadside.get_width()
 
-        base = roadside + asphalt / 2
+        base = roadside + asphalt / 2 + (width - self.width) / 2
 
         return [base + asphalt * x for x in range(4)]
+    
+    
+    def get_x_edges(self) -> list:
+        return [self.roadside.get_width() * 1.6, self.road.get_width() - self.roadside.get_width() * 2.6]
 
 
     def __call__(self, sc: pygame.Surface, speed: float) -> None:
-        self.road_rect1.y += speed
-        self.road_rect2.y += speed
+        self.road_rect1.centery += speed
+        self.road_rect2.centery += speed
 
         if self.road_rect1.y >= sc.get_height():
             self.road_rect1.y = self.road_rect2.y - self.road.get_height()

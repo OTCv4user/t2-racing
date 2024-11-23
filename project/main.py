@@ -1,17 +1,19 @@
 import os
 import sys
+import random
 
 import pygame
 import win32api
 
 from scripts.constants import (
-    DISPLAY_SIZE, TICKRATE, PRESSED_SCALE, STEERING_SPEED
+    DISPLAY_SIZE, TICKRATE, PRESSED_SCALE,
+    STEERING_SPEED, USEREVENT1_SEC, CAR_SCALE
 )
 from scripts.surfaces_buffer import SurfBuffer
 from scripts.button import Button
 from scripts.road import RoadSystem
-from scripts.cars import Car
-#from scripts.overlay import Overlay
+from scripts.cars import Car, BotCars
+from scripts.t2_token import Token
 
 
 def exit(*args) -> None:
@@ -20,6 +22,11 @@ def exit(*args) -> None:
 
 
 def game(sc: pygame.Surface, clock: pygame.time.Clock) -> object:
+    speed = 5
+    score = 0
+    t2_coins = 0
+    
+    
     road = RoadSystem(
         asphalt=surfaces('asphalt'),
         roadside=surfaces('roadside'),
@@ -27,6 +34,9 @@ def game(sc: pygame.Surface, clock: pygame.time.Clock) -> object:
         center_x=sc.get_width() / 2
 
     )
+    x_cords = road.calculate_x(sc.get_width())
+    x_edges = road.get_x_edges()
+    
     model = surfaces(
         'cybertruck'
     )
@@ -35,13 +45,33 @@ def game(sc: pygame.Surface, clock: pygame.time.Clock) -> object:
     player_car = Car(
         model=pygame.transform.scale(
             surface=model,
-            size=(model.get_width() * scale, model.get_height() * scale)
+            size=(model.get_width() * (scale * CAR_SCALE), model.get_height() * (scale * CAR_SCALE))
         ),
-        pos=(sc.get_width() / 2, sc.get_height() * .8),
-        speed=0
+        pos=(sc.get_width() / 2, sc.get_height() * .8)
     ) # 3 часа ночи, хочу спать...
-
-    speed = 80
+    
+    bots = BotCars(
+        [
+            Car(
+                model=pygame.transform.scale(
+                    surface=model,
+                    size=(model.get_width() * (scale * CAR_SCALE), model.get_height() * (scale * CAR_SCALE)) # Делаю модельки ботов чуть меньше игрока
+                ),
+                pos=(x, random.randint(-3000, -500))) for x in x_cords
+        ]
+    )
+    
+    token_model = surfaces(
+        'token'
+    )
+    
+    token = Token(
+        model=pygame.transform.scale(
+            surface=token_model,
+            size=(token_model.get_width() * scale, token_model.get_height() * scale)
+        ),
+        x_cords=x_cords
+    )
 
     while True:
         sc.fill((255, 255, 255))
@@ -51,27 +81,50 @@ def game(sc: pygame.Surface, clock: pygame.time.Clock) -> object:
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                print(f'Score: {score // 100}, Tokens: {t2_coins}  -- Начислим юзеру столько мегабайт, собранные токены')
                 return main_menu
+            if event.type == pygame.USEREVENT:
+                speed += 1
 
-        if keys[pygame.K_a]:
-            player_car.model_rect.x -= STEERING_SPEED
-        if keys[pygame.K_d]:
-            player_car.model_rect.x += STEERING_SPEED
-
+        if player_car.model_rect.x > x_edges[0]:
+            if keys[pygame.K_a]:
+                player_car.model_rect.x -= STEERING_SPEED
+        
+        if player_car.model_rect.x < x_edges[1]:
+            if keys[pygame.K_d]:
+                player_car.model_rect.x += STEERING_SPEED
+        print(player_car.model_rect.right, x_edges[1])
         if btns[0]:
             if mouse_x < sc.get_width() / 2:
-                player_car.model_rect.x -= STEERING_SPEED
+                if player_car.model_rect.x > x_edges[0]:
+                    player_car.model_rect.x -= STEERING_SPEED
             else:
-                player_car.model_rect.x += STEERING_SPEED
+                if player_car.model_rect.x < x_edges[1]:
+                    player_car.model_rect.x += STEERING_SPEED
 
         road(
             sc=sc,
             speed=speed
         )
-        player_car(
-            sc=sc
+        score += speed
+        bots(
+            sc=sc,
+            speed=speed
         )
-
+        player_car(
+            sc=sc,
+            speed=0
+        )
+        '''
+        for i in x_cords:
+            pygame.draw.circle(sc, (255, 0, 0), (i, sc.get_height() / 2), 5)
+        '''
+        if bots.check_cols(player_car=player_car):
+            print(f'Score: {score // 100}, Tokens: {t2_coins}  -- Начислим юзеру столько мегабайт, собранные токены')
+            return main_menu
+        
+        t2_coins += token(sc, player_car, speed)
+        
         pygame.display.update()
         clock.tick(TICKRATE)
 
@@ -112,13 +165,6 @@ def main_menu(sc: pygame.Surface, clock: pygame.time.Clock) -> object:
         on_click=game
     )
 
-    '''overlay = Overlay(
-        sc=sc,
-        ticks=30,
-        alpha=0,
-        direction=1
-    )'''
-
     while True:
         mouse_x, mouse_y = pygame.mouse.get_pos()
         btns = pygame.mouse.get_pressed()
@@ -138,9 +184,7 @@ def main_menu(sc: pygame.Surface, clock: pygame.time.Clock) -> object:
         )
         if func:
             return func
-        #print(
-        #overlay()
-        #)
+
 
         pygame.display.update()
         clock.tick(TICKRATE)
@@ -148,6 +192,7 @@ def main_menu(sc: pygame.Surface, clock: pygame.time.Clock) -> object:
         
 def main():
     pygame.init()
+    pygame.time.set_timer(pygame.USEREVENT, USEREVENT1_SEC * 1000)
     
     scale = (win32api.GetSystemMetrics(1) / DISPLAY_SIZE[1]) - 0.05 # Pseudo-emulation phone
     display_size = tuple(map(lambda e: e * scale, DISPLAY_SIZE))
